@@ -1,0 +1,27 @@
+name: ctOS
+version: '${project.version}'
+main: com.ctos.CtOSPlugin
+api-version: '1.21'
+author: Zoeille
+description: Dynamic synchronized traffic lights for Minecraft
+
+commands:
+  ctos:
+    description: Main ctOS command
+    usage: /<command> [wand|list|remove|info|reload]
+    aliases: [trafficlight, tl]
+    permission: ctos.use
+
+permissions:
+  ctos.use:
+    description: Allows using ctOS commands
+    default: op
+  ctos.wand:
+    description: Allows using the setup wand
+    default: op
+  ctos.admin:
+    description: Full ctOS administrative access
+    default: op
+    children:
+      ctos.use: true
+      ctos.wand: true

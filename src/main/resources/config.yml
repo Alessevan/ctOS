@@ -1,0 +1,24 @@
+# ctOS Configuration
+
+# Debug mode - enables detailed logging for troubleshooting
+debug: false
+
+# Default timing for new intersections (in ticks, 20 ticks = 1 second)
+default-timing:
+  green-duration: 200     # 10 seconds
+  orange-duration: 60     # 3 seconds
+  pedestrian-green: 150   # 7.5 seconds
+  all-red-gap: 20         # 1 second safety gap between phases
+
+# Animation settings
+animation:
+  tick-interval: 10       # Check for phase changes every 10 ticks (0.5 seconds)
+
+# Session settings
+session:
+  timeout-minutes: 10     # Auto-cancel setup sessions after 10 minutes of inactivity
+
+# Storage
+storage:
+  directory: "intersections"
+  auto-save-interval: 6000  # Auto-save every 5 minutes (6000 ticks)
