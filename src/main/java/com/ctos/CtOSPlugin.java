@@ -68,7 +68,7 @@ public class CtOSPlugin extends JavaPlugin {
 
         // 6. Register commands
         getLogger().info("Registering commands...");
-        WandCommand wandCommand = new WandCommand(this, wandStateManager, intersectionManager);
+        WandCommand wandCommand = new WandCommand(this, wandStateManager, intersectionManager, this.persistence);
         wandCommand.registerCommand();
 
         // 7. Register listeners

@@ -3,20 +3,18 @@ package com.ctos.commands;
 import com.ctos.CtOSPlugin;
 import com.ctos.trafficlight.model.Intersection;
 import com.ctos.trafficlight.service.IntersectionManager;
+import com.ctos.trafficlight.service.IntersectionPersistence;
 import com.ctos.trafficlight.state.SetupSession;
 import com.ctos.trafficlight.state.WandState;
 import com.ctos.trafficlight.state.WandStateManager;
 import com.mojang.brigadier.Command;
 import com.mojang.brigadier.arguments.StringArgumentType;
-import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
-import com.mojang.brigadier.suggestion.SuggestionProvider;
 import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import com.mojang.brigadier.tree.LiteralCommandNode;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 import io.papermc.paper.command.brigadier.Commands;
-import io.papermc.paper.command.brigadier.argument.ArgumentTypes;
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.ClickEvent;
@@ -24,14 +22,11 @@ import net.kyori.adventure.text.event.HoverEvent;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.Location;
-import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
-import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -48,11 +43,13 @@ public class WandCommand {
     private final CtOSPlugin plugin;
     private final WandStateManager wandStateManager;
     private final IntersectionManager intersectionManager;
+    private final IntersectionPersistence intersectionPersistence;
 
-    public WandCommand(CtOSPlugin plugin, WandStateManager wandStateManager, IntersectionManager intersectionManager) {
+    public WandCommand(CtOSPlugin plugin, WandStateManager wandStateManager, IntersectionManager intersectionManager, IntersectionPersistence intersectionPersistence) {
         this.plugin = plugin;
         this.wandStateManager = wandStateManager;
         this.intersectionManager = intersectionManager;
+        this.intersectionPersistence = intersectionPersistence;
     }
 
     public void registerCommand() {
@@ -229,6 +226,7 @@ public class WandCommand {
             UUID id = UUID.fromString(identifier);
             if (intersectionManager.hasIntersection(id)) {
                 intersectionManager.removeIntersection(id);
+                this.intersectionPersistence.deleteIntersection(id);
                 sender.sendMessage(Component.text("Removed intersection").color(NamedTextColor.GREEN));
                 return;
             }
@@ -249,8 +247,10 @@ public class WandCommand {
                 return;
             }
 
-            intersectionManager.removeIntersection(matches.get(0).getId());
-            sender.sendMessage(Component.text("Removed intersection: " + matches.get(0).getName()).color(NamedTextColor.GREEN));
+            Intersection intersection = matches.getFirst();
+            intersectionManager.removeIntersection(intersection.getId());
+            this.intersectionPersistence.deleteIntersection(intersection.getId());
+            sender.sendMessage(Component.text("Removed intersection: " + intersection.getName()).color(NamedTextColor.GREEN));
             return;
         }
 
