@@ -6,13 +6,24 @@ import com.ctos.trafficlight.service.IntersectionManager;
 import com.ctos.trafficlight.state.SetupSession;
 import com.ctos.trafficlight.state.WandState;
 import com.ctos.trafficlight.state.WandStateManager;
+import com.mojang.brigadier.Command;
+import com.mojang.brigadier.arguments.StringArgumentType;
+import com.mojang.brigadier.builder.LiteralArgumentBuilder;
+import com.mojang.brigadier.context.CommandContext;
+import com.mojang.brigadier.suggestion.SuggestionProvider;
+import com.mojang.brigadier.suggestion.Suggestions;
+import com.mojang.brigadier.suggestion.SuggestionsBuilder;
+import com.mojang.brigadier.tree.LiteralCommandNode;
+import io.papermc.paper.command.brigadier.CommandSourceStack;
+import io.papermc.paper.command.brigadier.Commands;
+import io.papermc.paper.command.brigadier.argument.ArgumentTypes;
+import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.ClickEvent;
 import net.kyori.adventure.text.event.HoverEvent;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.Location;
-import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
@@ -24,6 +35,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 import com.ctos.trafficlight.model.BlockPosition;
 import com.ctos.trafficlight.model.TrafficLightSide;
@@ -32,7 +44,7 @@ import com.ctos.trafficlight.model.LightPhase;
 /**
  * Handles all ctOS commands
  */
-public class WandCommand implements CommandExecutor, TabCompleter {
+public class WandCommand {
     private final CtOSPlugin plugin;
     private final WandStateManager wandStateManager;
     private final IntersectionManager intersectionManager;
@@ -43,43 +55,80 @@ public class WandCommand implements CommandExecutor, TabCompleter {
         this.intersectionManager = intersectionManager;
     }
 
-    @Override
-    public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-        if (args.length == 0) {
-            sendHelp(sender);
-            return true;
-        }
-
-        String subcommand = args[0].toLowerCase();
-
-        switch (subcommand) {
-            case "wand":
-                return handleWand(sender);
-            case "list":
-                return handleList(sender);
-            case "remove":
-                return handleRemove(sender, args);
-            case "info":
-                return handleInfo(sender, args);
-            case "edit":
-                return handleEdit(sender, args);
-            case "cancel":
-                return handleCancel(sender);
-            case "reload":
-                return handleReload(sender);
-            default:
-                sendHelp(sender);
-                return true;
-        }
+    public void registerCommand() {
+        LiteralCommandNode<CommandSourceStack> command =  Commands.literal("ctos")
+                .requires(requirement -> requirement.getSender().hasPermission("ctos.use"))
+                .then(Commands.literal("wand")
+                        .executes(context -> {
+                            handleWand(context.getSource().getSender());
+                            return Command.SINGLE_SUCCESS;
+                        })
+                )
+                .then(Commands.literal("list")
+                        .executes(context -> {
+                            handleList(context.getSource().getSender());
+                            return Command.SINGLE_SUCCESS;
+                        })
+                )
+                .then(Commands.literal("info")
+                        .then(Commands.argument("identifier", StringArgumentType.string())
+                                .suggests(this::intersectionSuggestions)
+                                .executes(context -> {
+                                    String identifier = context.getArgument("identifier", String.class);
+                                    handleInfo(context.getSource().getSender(), new String[]{"info", identifier});
+                                    return Command.SINGLE_SUCCESS;
+                                })
+                        )
+                )
+                .then(Commands.literal("remove")
+                        .then(Commands.argument("identifier", StringArgumentType.string())
+                                .suggests(this::intersectionSuggestions)
+                                .executes(context -> {
+                                    String identifier = context.getArgument("identifier", String.class);
+                                    handleRemove(context.getSource().getSender(), new String[]{"remove", identifier});
+                                    return Command.SINGLE_SUCCESS;
+                                })
+                        )
+                )
+                .then(Commands.literal("edit")
+                        .then(Commands.argument("identifier", StringArgumentType.string())
+                                .suggests(this::intersectionSuggestions)
+                                .executes(context -> {
+                                    String identifier = context.getArgument("identifier", String.class);
+                                    handleEdit(context.getSource().getSender(), new String[]{"edit", identifier});
+                                    return Command.SINGLE_SUCCESS;
+                                })
+                        )
+                )
+                .then(Commands.literal("cancel")
+                        .executes(context -> {
+                            handleCancel(context.getSource().getSender());
+                            return Command.SINGLE_SUCCESS;
+                        })
+                )
+                .then(Commands.literal("reload")
+                        .executes(context -> {
+                            handleReload(context.getSource().getSender());
+                            return Command.SINGLE_SUCCESS;
+                        })
+                )
+                .executes(context -> {
+                    sendHelp(context.getSource().getSender());
+                    return Command.SINGLE_SUCCESS;
+                })
+                .build();
+        this.plugin.getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, (event ->
+            event.registrar().register(command, "Main ctOS command")
+        ));
     }
 
     /**
      * Gives the player a wand and starts a setup session
      */
-    private boolean handleWand(CommandSender sender) {
+    private void handleWand(CommandSender sender) {
         if (!(sender instanceof Player)) {
             sender.sendMessage(Component.text("Only players can use this command").color(NamedTextColor.RED));
-            return true;
+            return;
         }
 
         Player player = (Player) sender;
@@ -87,7 +136,7 @@ public class WandCommand implements CommandExecutor, TabCompleter {
         // Check permission
         if (!player.hasPermission("ctos.wand")) {
             player.sendMessage(Component.text("You don't have permission to use the wand").color(NamedTextColor.RED));
-            return true;
+            return;
         }
 
         // Give wand item
@@ -100,23 +149,23 @@ public class WandCommand implements CommandExecutor, TabCompleter {
 
         player.sendMessage(Component.text("You received the ctOS Wand!").color(NamedTextColor.GREEN));
 
-        return true;
+        return;
     }
 
     /**
      * Lists all intersections with clickable actions
      */
-    private boolean handleList(CommandSender sender) {
+    private void handleList(CommandSender sender) {
         if (!sender.hasPermission("ctos.use")) {
             sender.sendMessage(Component.text("You don't have permission to list intersections").color(NamedTextColor.RED));
-            return true;
+            return;
         }
 
         List<Intersection> intersections = new ArrayList<>(intersectionManager.getAllIntersections());
 
         if (intersections.isEmpty()) {
             sender.sendMessage(Component.text("No intersections configured").color(NamedTextColor.YELLOW));
-            return true;
+            return;
         }
 
         sender.sendMessage(Component.text("=== Intersections ===").color(NamedTextColor.GOLD));
@@ -156,21 +205,21 @@ public class WandCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage(message);
         }
 
-        return true;
+        return;
     }
 
     /**
      * Removes an intersection
      */
-    private boolean handleRemove(CommandSender sender, String[] args) {
+    private void handleRemove(CommandSender sender, String[] args) {
         if (!sender.hasPermission("ctos.admin")) {
             sender.sendMessage(Component.text("You don't have permission to remove intersections").color(NamedTextColor.RED));
-            return true;
+            return;
         }
 
         if (args.length < 2) {
             sender.sendMessage(Component.text("Usage: /ctos remove <id|name>").color(NamedTextColor.RED));
-            return true;
+            return;
         }
 
         String identifier = args[1];
@@ -181,7 +230,7 @@ public class WandCommand implements CommandExecutor, TabCompleter {
             if (intersectionManager.hasIntersection(id)) {
                 intersectionManager.removeIntersection(id);
                 sender.sendMessage(Component.text("Removed intersection").color(NamedTextColor.GREEN));
-                return true;
+                return;
             }
         } catch (IllegalArgumentException e) {
             // Not a UUID, try by name
@@ -189,7 +238,7 @@ public class WandCommand implements CommandExecutor, TabCompleter {
 
             if (matches.isEmpty()) {
                 sender.sendMessage(Component.text("No intersection found with that ID or name").color(NamedTextColor.RED));
-                return true;
+                return;
             }
 
             if (matches.size() > 1) {
@@ -197,26 +246,26 @@ public class WandCommand implements CommandExecutor, TabCompleter {
                 for (Intersection match : matches) {
                     sender.sendMessage(Component.text("- " + match.getName() + " (" + match.getId() + ")").color(NamedTextColor.GRAY));
                 }
-                return true;
+                return;
             }
 
             intersectionManager.removeIntersection(matches.get(0).getId());
             sender.sendMessage(Component.text("Removed intersection: " + matches.get(0).getName()).color(NamedTextColor.GREEN));
-            return true;
+            return;
         }
 
         sender.sendMessage(Component.text("Intersection not found").color(NamedTextColor.RED));
-        return true;
+        return;
     }
 
     /**
      * Shows information about an intersection
      * If no argument given and sender is a player, finds the nearest intersection
      */
-    private boolean handleInfo(CommandSender sender, String[] args) {
+    private void handleInfo(CommandSender sender, String[] args) {
         if (!sender.hasPermission("ctos.use")) {
             sender.sendMessage(Component.text("You don't have permission to view intersection info").color(NamedTextColor.RED));
-            return true;
+            return;
         }
 
         Intersection intersection = null;
@@ -225,7 +274,7 @@ public class WandCommand implements CommandExecutor, TabCompleter {
             // No argument - try to find nearest intersection if player
             if (!(sender instanceof Player)) {
                 sender.sendMessage(Component.text("Usage: /ctos info <id|name>").color(NamedTextColor.RED));
-                return true;
+                return;
             }
 
             Player player = (Player) sender;
@@ -233,7 +282,7 @@ public class WandCommand implements CommandExecutor, TabCompleter {
 
             if (intersection == null) {
                 sender.sendMessage(Component.text("No intersection found nearby. Usage: /ctos info <id|name>").color(NamedTextColor.RED));
-                return true;
+                return;
             }
 
             sender.sendMessage(Component.text("Found nearby intersection: " + intersection.getName()).color(NamedTextColor.GRAY));
@@ -255,19 +304,19 @@ public class WandCommand implements CommandExecutor, TabCompleter {
                     for (Intersection match : matches) {
                         sender.sendMessage(Component.text("- " + match.getName() + " (" + match.getId() + ")").color(NamedTextColor.GRAY));
                     }
-                    return true;
+                    return;
                 }
             }
 
             if (intersection == null) {
                 sender.sendMessage(Component.text("Intersection not found").color(NamedTextColor.RED));
-                return true;
+                return;
             }
         }
 
         // Display intersection info
         displayIntersectionInfo(sender, intersection);
-        return true;
+        return;
     }
 
     /**
@@ -355,17 +404,17 @@ public class WandCommand implements CommandExecutor, TabCompleter {
      * Starts editing an existing intersection
      * If no argument given and sender is a player, finds the nearest intersection
      */
-    private boolean handleEdit(CommandSender sender, String[] args) {
+    private void handleEdit(CommandSender sender, String[] args) {
         if (!(sender instanceof Player)) {
             sender.sendMessage(Component.text("Only players can use this command").color(NamedTextColor.RED));
-            return true;
+            return;
         }
 
         Player player = (Player) sender;
 
         if (!player.hasPermission("ctos.admin")) {
             player.sendMessage(Component.text("You don't have permission to edit intersections").color(NamedTextColor.RED));
-            return true;
+            return;
         }
 
         Intersection intersection = null;
@@ -376,7 +425,7 @@ public class WandCommand implements CommandExecutor, TabCompleter {
 
             if (intersection == null) {
                 sender.sendMessage(Component.text("No intersection found nearby. Usage: /ctos edit <id|name>").color(NamedTextColor.RED));
-                return true;
+                return;
             }
         } else {
             // Argument given - find by ID or name
@@ -394,13 +443,13 @@ public class WandCommand implements CommandExecutor, TabCompleter {
                     for (Intersection match : matches) {
                         sender.sendMessage(Component.text("- " + match.getName() + " (" + match.getId() + ")").color(NamedTextColor.GRAY));
                     }
-                    return true;
+                    return;
                 }
             }
 
             if (intersection == null) {
                 sender.sendMessage(Component.text("Intersection not found").color(NamedTextColor.RED));
-                return true;
+                return;
             }
         }
 
@@ -417,7 +466,7 @@ public class WandCommand implements CommandExecutor, TabCompleter {
         displayEditMenu(player, intersection);
         session.sendPrompt(player);
 
-        return true;
+        return;
     }
 
     /**
@@ -462,35 +511,35 @@ public class WandCommand implements CommandExecutor, TabCompleter {
     /**
      * Cancels the player's current setup session
      */
-    private boolean handleCancel(CommandSender sender) {
+    private void handleCancel(CommandSender sender) {
         if (!(sender instanceof Player)) {
             sender.sendMessage(Component.text("Only players can use this command").color(NamedTextColor.RED));
-            return true;
+            return;
         }
 
         Player player = (Player) sender;
 
         if (!wandStateManager.hasSession(player)) {
             player.sendMessage(Component.text("You don't have an active setup session").color(NamedTextColor.RED));
-            return true;
+            return;
         }
 
         wandStateManager.cancelSession(player);
-        return true;
+        return;
     }
 
     /**
      * Reloads the plugin configuration
      */
-    private boolean handleReload(CommandSender sender) {
+    private void handleReload(CommandSender sender) {
         if (!sender.hasPermission("ctos.admin")) {
             sender.sendMessage(Component.text("You don't have permission to reload the plugin").color(NamedTextColor.RED));
-            return true;
+            return;
         }
 
         plugin.reloadConfig();
         sender.sendMessage(Component.text("Configuration reloaded").color(NamedTextColor.GREEN));
-        return true;
+        return;
     }
 
     /**
@@ -514,21 +563,12 @@ public class WandCommand implements CommandExecutor, TabCompleter {
                 .append(Component.text(" - Reload configuration").color(NamedTextColor.GRAY)));
     }
 
-    @Override
-    public List<String> onTabComplete(CommandSender sender, Command command, String label, String[] args) {
-        List<String> completions = new ArrayList<>();
 
-        if (args.length == 1) {
-            List<String> subcommands = Arrays.asList("wand", "list", "remove", "info", "edit", "cancel", "reload");
-            String partial = args[0].toLowerCase();
-
-            for (String sub : subcommands) {
-                if (sub.startsWith(partial)) {
-                    completions.add(sub);
-                }
-            }
-        }
-
-        return completions;
+    private CompletableFuture<Suggestions> intersectionSuggestions(CommandContext<CommandSourceStack> ctx, SuggestionsBuilder builder) {
+        this.intersectionManager.getAllIntersections().forEach(intersection -> {
+            builder.suggest(intersection.getId().toString());
+            builder.suggest(intersection.getName());
+        });
+        return builder.buildFuture();
     }
 }
