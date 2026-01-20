@@ -52,8 +52,8 @@ public class WandCommand {
         this.intersectionPersistence = intersectionPersistence;
     }
 
-    public void registerCommand() {
-        LiteralCommandNode<CommandSourceStack> command =  Commands.literal("ctos")
+    public LiteralCommandNode<CommandSourceStack> buildCommand() {
+        return Commands.literal("ctos")
                 .requires(requirement -> requirement.getSender().hasPermission("ctos.use"))
                 .then(Commands.literal("wand")
                         .executes(context -> {
@@ -114,9 +114,6 @@ public class WandCommand {
                     return Command.SINGLE_SUCCESS;
                 })
                 .build();
-        this.plugin.getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, (event ->
-            event.registrar().register(command, "Main ctOS command", List.of("tl", "trafficlights"))
-        ));
     }
 
     /**

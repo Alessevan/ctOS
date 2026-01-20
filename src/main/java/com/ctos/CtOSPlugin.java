@@ -9,7 +9,7 @@ import com.ctos.trafficlight.service.IntersectionPersistence;
 import com.ctos.trafficlight.service.TrafficLightAnimator;
 import com.ctos.trafficlight.state.WandState;
 import com.ctos.trafficlight.state.WandStateManager;
-import io.papermc.paper.command.brigadier.Commands;
+import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitRunnable;
@@ -69,7 +69,9 @@ public class CtOSPlugin extends JavaPlugin {
         // 6. Register commands
         getLogger().info("Registering commands...");
         WandCommand wandCommand = new WandCommand(this, wandStateManager, intersectionManager, this.persistence);
-        wandCommand.registerCommand();
+        this.getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, (event ->
+                event.registrar().register(wandCommand.buildCommand(), "Main ctOS command", List.of("tl", "trafficlights"))
+        ));
 
         // 7. Register listeners
         getLogger().info("Registering event listeners...");
